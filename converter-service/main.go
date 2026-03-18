@@ -12,6 +12,10 @@ import (
 	"converter-service/storage"
 )
 
+func publishAudioReady(cfg *config.Config, videoID, audioPath string) error {
+	return queue.PublishAudioReady(cfg.RabbitMQHost, videoID, audioPath)
+}
+
 func main() {
 	cfg := config.LoadConfig()
 	store := storage.NewStorage(cfg)
@@ -45,6 +49,13 @@ func main() {
 		}
 
 		logger.Logger.Println("Audio ready:", outputKey)
+
+		// Publish audio_ready event
+		err = publishAudioReady(cfg, msg.VideoID, outputKey)
+		if err != nil {
+			logger.Logger.Println("Failed to publish audio_ready:", err)
+			return err
+		}
 
 		// cleanup
 		os.Remove(inputFile)

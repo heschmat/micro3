@@ -1,5 +1,6 @@
+# microservie demo
 
-# 
+## initial setup 
 ```sh
 cd infra
 docker compose up -d
@@ -20,7 +21,7 @@ login: minio / minio123
 - audios
 
 
-# upload-service 
+## upload-service 
 
 Make sure `uv` is installed
 
@@ -58,7 +59,7 @@ uv run uvicorn app.main:app --reload --port 8000
 curl -F "file=@test.mp4" http://localhost:8000/upload
 ```
 
-# converter
+## converter
 
 ```sh
 sudo apt update
@@ -74,4 +75,43 @@ git add .
 git commit -m "feat: end-to-end pipeline working (upload -> convert -> store)"
 git tag v0.2-end-to-end-pipeline
 git push origin v0.2-end-to-end-pipeline
+```
+
+
+## notification
+
+```sh
+uv run uvicorn app.main:app --reload --port 8100
+```
+
+
+```sh
+# upload video
+curl -F "file=@test.mp4" http://localhost:8000/upload
+{"status":"success","video_id":"2b623bf8-eb92-4d33-b9c2-c7e9615da1b0"}
+
+# ------------ upload service
+
+2026-03-18 22:26:47,423 [INFO] [upload-service] Received upload: test.mp4
+2026-03-18 22:26:47,423 [INFO] [upload-service] Generated video_id: 2b623bf8-eb92-4d33-b9c2-c7e9615da1b0
+2026-03-18 22:26:47,423 [INFO] [upload-service] Uploading file to S3: 2b623bf8-eb92-4d33-b9c2-c7e9615da1b0.mp4
+2026-03-18 22:26:47,557 [INFO] [upload-service] Upload successful: 2b623bf8-eb92-4d33-b9c2-c7e9615da1b0.mp4
+2026-03-18 22:26:47,566 [INFO] [upload-service] Publishing message: {'video_id': '2b623bf8-eb92-4d33-b9c2-c7e9615da1b0', 'file_path': '2b623bf8-eb92-4d33-b9c2-c7e9615da1b0.mp4', 'output_format': 'mp3'}
+2026-03-18 22:26:47,568 [INFO] [upload-service] Message published successfully
+INFO:     127.0.0.1:57152 - "POST /upload HTTP/1.1" 200 OK
+
+# ------------ converter service
+[converter-service] 2026/03/18 22:25:01 Waiting for messages...
+[converter-service] 2026/03/18 22:26:47 Processing: 2b623bf8-eb92-4d33-b9c2-c7e9615da1b0
+[converter-service] 2026/03/18 22:26:47 Downloading: 2b623bf8-eb92-4d33-b9c2-c7e9615da1b0.mp4
+[converter-service] 2026/03/18 22:26:47 Starting conversion: /tmp/2b623bf8-eb92-4d33-b9c2-c7e9615da1b0.mp4
+[converter-service] 2026/03/18 22:26:48 Conversion completed: /tmp/2b623bf8-eb92-4d33-b9c2-c7e9615da1b0.mp3
+[converter-service] 2026/03/18 22:26:48 Uploading: 2b623bf8-eb92-4d33-b9c2-c7e9615da1b0.mp3
+[converter-service] 2026/03/18 22:26:48 Audio ready: 2b623bf8-eb92-4d33-b9c2-c7e9615da1b0.mp3
+[converter-service] 2026/03/18 22:26:48 Publishing audio_ready event: {"audio_path":"2b623bf8-eb92-4d33-b9c2-c7e9615da1b0.mp3","video_id":"2b623bf8-eb92-4d33-b9c2-c7e9615da1b0"}
+
+# ------------ notification service
+2026-03-18 22:25:55,028 [INFO] [notification-service] Listening for messages on audio_ready...
+2026-03-18 22:26:48,427 [INFO] [notification-service] Download ready for video 2b623bf8-eb92-4d33-b9c2-c7e9615da1b0: http://localhost:9000/audios/2b623bf8-eb92-4d33-b9c2-c7e9615da1b0.mp3
+
 ```
