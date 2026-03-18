@@ -57,3 +57,21 @@ uv run uvicorn app.main:app --reload --port 8000
 
 curl -F "file=@test.mp4" http://localhost:8000/upload
 ```
+
+# converter
+
+```sh
+sudo apt update
+sudo apt install ffmpeg -y
+
+# check
+ffmpeg -version
+```
+
+If it works, tag
+```sh
+git add .
+git commit -m "feat: end-to-end pipeline working (upload -> convert -> store)"
+git tag v0.2-end-to-end-pipeline
+git push origin v0.2-end-to-end-pipeline
+```
