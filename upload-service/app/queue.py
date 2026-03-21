@@ -16,7 +16,15 @@ def publish_message(message: dict):
         channel = connection.channel()
 
         # Ensure queue exists
-        channel.queue_declare(queue=settings.RABBITMQ_QUEUE, durable=True)
+        # channel.queue_declare(queue=settings.RABBITMQ_QUEUE, durable=True)
+        channel.queue_declare(
+            queue=settings.RABBITMQ_QUEUE,
+            durable=True,
+            arguments={
+                "x-dead-letter-exchange": "",
+                "x-dead-letter-routing-key": "video_jobs_dlq",
+            },
+        )
 
         logger.info(f"Publishing message: {message}")
 

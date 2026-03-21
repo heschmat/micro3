@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 
 	"converter-service/config"
@@ -16,6 +18,32 @@ func publishAudioReady(cfg *config.Config, videoID, audioPath string) error {
 	return queue.PublishAudioReady(cfg.RabbitMQHost, videoID, audioPath)
 }
 
+func updateVideoStatus(videoID, status, outputPath, errMsg string) {
+	// baseURL := "http://upload-service:8000/videos/" + videoID
+	baseURL := "http://localhost:8000/videos/" + videoID
+
+	params := url.Values{}
+	params.Add("status", status)
+
+	if outputPath != "" {
+		params.Add("output_path", outputPath)
+	}
+	if errMsg != "" {
+		params.Add("error", errMsg)
+	}
+
+	fullURL := baseURL + "?" + params.Encode()
+
+	req, _ := http.NewRequest(http.MethodPatch, fullURL, nil)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		logger.Logger.Println("Failed to update status:", err)
+		return
+	}
+	defer resp.Body.Close()
+}
+
 func main() {
 	cfg := config.LoadConfig()
 	store := storage.NewStorage(cfg)
@@ -26,10 +54,13 @@ func main() {
 		inputFile := fmt.Sprintf("/tmp/%s.mp4", msg.VideoID)
 		outputFile := fmt.Sprintf("/tmp/%s.mp3", msg.VideoID)
 
+		updateVideoStatus(msg.VideoID, "processing", "", "")
+
 		// 1. Download
 		err := store.DownloadFile(msg.FilePath, inputFile)
 		if err != nil {
 			logger.Logger.Println("Download failed:", err)
+			updateVideoStatus(msg.VideoID, "failed", "", err.Error())
 			return err
 		}
 
@@ -37,6 +68,7 @@ func main() {
 		err = converter.ConvertToAudio(inputFile, outputFile)
 		if err != nil {
 			logger.Logger.Println("Conversion failed:", err)
+			updateVideoStatus(msg.VideoID, "failed", "", err.Error())
 			return err
 		}
 
@@ -45,10 +77,12 @@ func main() {
 		err = store.UploadFile(outputFile, outputKey)
 		if err != nil {
 			logger.Logger.Println("Upload failed:", err)
+			updateVideoStatus(msg.VideoID, "failed", "", err.Error())
 			return err
 		}
 
 		logger.Logger.Println("Audio ready:", outputKey)
+		updateVideoStatus(msg.VideoID, "completed", outputKey, "")
 
 		// Publish audio_ready event
 		err = publishAudioReady(cfg, msg.VideoID, outputKey)

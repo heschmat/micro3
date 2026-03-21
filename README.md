@@ -57,6 +57,9 @@ uv run uvicorn app.main:app --reload --port 8000
 
 
 curl -F "file=@test.mp4" http://localhost:8000/upload
+
+VIDEO_ID="47c7c5cb-ff45-4c62-815f-b98898039527"
+curl http://localhost:8000/videos/$VIDEO_ID
 ```
 
 ## converter
@@ -114,4 +117,34 @@ INFO:     127.0.0.1:57152 - "POST /upload HTTP/1.1" 200 OK
 2026-03-18 22:25:55,028 [INFO] [notification-service] Listening for messages on audio_ready...
 2026-03-18 22:26:48,427 [INFO] [notification-service] Download ready for video 2b623bf8-eb92-4d33-b9c2-c7e9615da1b0: http://localhost:9000/audios/2b623bf8-eb92-4d33-b9c2-c7e9615da1b0.mp3
 
+```
+
+
+
+
+## Postgres
+
+```sh
+docker exec -it postgres psql -U postgres
+
+```
+
+```sql
+\l        -- list databases
+\c dbname -- connect to a database
+\dt       -- list tables
+\q        -- quit
+
+-------------------
+\c videos
+SELECT * FROM videos;
+```
+
+
+## RMQ
+RabbitMQ does NOT let you change queue args after creation => you MUST reset queues:
+```sh
+docker exec -it rabbitmq rabbitmqctl delete_queue video_jobs
+docker exec -it rabbitmq rabbitmqctl delete_queue video_jobs_retry
+docker exec -it rabbitmq rabbitmqctl delete_queue video_jobs_dlq
 ```
