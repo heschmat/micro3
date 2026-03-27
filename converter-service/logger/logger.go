@@ -5,4 +5,4 @@ import (
 	"os"
 )
 
-var Logger = log.New(os.Stdout, "[converter-service] ", log.LstdFlags)
+var Logger = log.New(os.Stdout, "[converter-service] ", log.LstdFlags|log.Lmicroseconds)

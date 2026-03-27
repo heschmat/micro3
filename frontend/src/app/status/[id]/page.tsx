@@ -81,19 +81,43 @@ function getStatusMeta(status: string) {
   switch (status) {
     case "uploaded":
       return {
-        label: "Queued",
-        progress: 25,
+        label: "Uploaded",
+        progress: 15,
         badge: "bg-blue-100 text-blue-700 border-blue-200",
-        bar: "w-1/4",
-        description: "Your file was uploaded successfully and is waiting to be processed.",
+        bar: "w-[15%]",
+        description: "Your file has been uploaded to object storage.",
       };
-    case "processing":
+    case "queued":
       return {
-        label: "Processing",
-        progress: 65,
+        label: "Queued",
+        progress: 30,
+        badge: "bg-sky-100 text-sky-700 border-sky-200",
+        bar: "w-[30%]",
+        description: "The job has been queued and is waiting for a worker.",
+      };
+    case "downloading":
+      return {
+        label: "Downloading",
+        progress: 45,
+        badge: "bg-indigo-100 text-indigo-700 border-indigo-200",
+        bar: "w-[45%]",
+        description: "The worker is downloading the source video from storage.",
+      };
+    case "converting":
+      return {
+        label: "Converting",
+        progress: 70,
         badge: "bg-amber-100 text-amber-700 border-amber-200",
-        bar: "w-2/3",
-        description: "The converter service is extracting audio from your video now.",
+        bar: "w-[70%]",
+        description: "FFmpeg is extracting audio from the uploaded video.",
+      };
+    case "uploading":
+      return {
+        label: "Uploading Output",
+        progress: 90,
+        badge: "bg-violet-100 text-violet-700 border-violet-200",
+        bar: "w-[90%]",
+        description: "The converted MP3 is being uploaded to output storage.",
       };
     case "completed":
       return {
@@ -329,29 +353,59 @@ export default function StatusPage() {
             </section>
 
             <section className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Pipeline Stages</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Pipeline Stages</h2>
 
-              <div className="mt-4 space-y-3">
-                <Stage
-                  title="Uploaded"
-                  active={
-                    video?.status === "uploaded" ||
-                    video?.status === "processing" ||
-                    video?.status === "completed"
-                  }
-                />
-                <Stage
-                  title="Processing"
-                  active={
-                    video?.status === "processing" ||
-                    video?.status === "completed"
-                  }
-                />
-                <Stage
-                  title="Completed"
-                  active={video?.status === "completed"}
-                />
-              </div>
+                <div className="mt-4 space-y-3">
+                    <Stage
+                        title="Uploaded"
+                        active={
+                            video?.status === "uploaded" ||
+                            video?.status === "queued" ||
+                            video?.status === "downloading" ||
+                            video?.status === "converting" ||
+                            video?.status === "uploading" ||
+                            video?.status === "completed"
+                        }
+                        />
+                    <Stage
+                        title="Queued"
+                        active={
+                            video?.status === "queued" ||
+                            video?.status === "downloading" ||
+                            video?.status === "converting" ||
+                            video?.status === "uploading" ||
+                            video?.status === "completed"
+                        }
+                        />
+                    <Stage
+                        title="Downloading"
+                        active={
+                            video?.status === "downloading" ||
+                            video?.status === "converting" ||
+                            video?.status === "uploading" ||
+                            video?.status === "completed"
+                        }
+                    />
+                    <Stage
+                        title="Converting"
+                        active={
+                            video?.status === "converting" ||
+                            video?.status === "uploading" ||
+                            video?.status === "completed"
+                        }
+                    />
+                    <Stage
+                        title="Uploading Output"
+                        active={
+                            video?.status === "uploading" ||
+                            video?.status === "completed"
+                        }
+                    />
+                    <Stage
+                        title="Completed"
+                        active={video?.status === "completed"}
+                    />
+                </div>
             </section>
           </aside>
         </div>

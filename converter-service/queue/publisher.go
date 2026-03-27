@@ -2,14 +2,22 @@ package queue
 
 import (
 	"encoding/json"
+	"net/url"
 
+	"converter-service/config"
 	"converter-service/logger"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func PublishAudioReady(rabbitHost, videoID, audioPath string) error {
-	conn, err := amqp.Dial("amqp://guest:guest@" + rabbitHost + ":5672/")
+func PublishAudioReady(cfg *config.Config, videoID, audioPath string) error {
+	u := url.URL{
+		Scheme: "amqp",
+		User:   url.UserPassword(cfg.RabbitMQUser, cfg.RabbitMQPass),
+		Host:   cfg.RabbitMQHost + ":5672",
+	}
+
+	conn, err := amqp.Dial(u.String())
 	if err != nil {
 		return err
 	}
@@ -21,10 +29,8 @@ func PublishAudioReady(rabbitHost, videoID, audioPath string) error {
 	}
 	defer ch.Close()
 
-	queueName := "audio_ready"
-
 	_, err = ch.QueueDeclare(
-		queueName,
+		cfg.AudioReadyQueue,
 		true,
 		false,
 		false,
@@ -40,18 +46,22 @@ func PublishAudioReady(rabbitHost, videoID, audioPath string) error {
 		"audio_path": audioPath,
 	}
 
-	body, _ := json.Marshal(message)
+	body, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
 
-	logger.Logger.Println("Publishing audio_ready event:", string(body))
+	logger.Logger.Printf("Publishing audio_ready event body=%s", string(body))
 
 	return ch.Publish(
 		"",
-		queueName,
+		cfg.AudioReadyQueue,
 		false,
 		false,
 		amqp.Publishing{
-			ContentType: "application/json",
-			Body:        body,
+			ContentType:  "application/json",
+			DeliveryMode: amqp.Persistent,
+			Body:         body,
 		},
 	)
 }

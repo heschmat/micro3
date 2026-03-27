@@ -74,6 +74,12 @@ async def upload_video(
         # Send to queue
         publish_message(message)
 
+        # 4. Update status to queued
+        video.status = "queued"
+        db.commit()
+
+        logger.info(f"Video {video_id} queued successfully, status=queued")
+
         return {
             "status": "success",
             "video_id": video_id,
@@ -101,10 +107,18 @@ def update_video(
         raise HTTPException(status_code=404, detail="Video not found")
 
     video.status = status
-    video.output_path = output_path
-    video.error = error
+    # only overwrite if explicitly provided
+    if output_path is not None:
+        video.output_path = output_path
+
+    if error is not None:
+        video.error = error
 
     db.commit()
+
+    logger.info(
+        f"Video {video_id} updated: status={status}, output_path={output_path}, error={error}"
+    )
 
     return {"status": "updated"}
 
@@ -116,4 +130,12 @@ def get_video(video_id: str, db: Session = Depends(get_db)):
     if not video:
         raise HTTPException(status_code=404, detail="Not found")
 
-    return video
+    return {
+        "id": video.id,
+        "status": video.status,
+        "input_path": video.input_path,
+        "output_path": video.output_path,
+        "error": video.error,
+        "created_at": video.created_at.isoformat() if video.created_at else None,
+        "updated_at": video.updated_at.isoformat() if video.updated_at else None,
+    }

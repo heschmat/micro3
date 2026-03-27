@@ -30,7 +30,7 @@ services:
       - "9001:9001"
     environment:
       MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: minio123
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
     volumes:
       - minio_data:/data
     healthcheck:
@@ -49,7 +49,7 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 minio minio123 &&
+      mc alias set local http://minio:9000 minio ${S3_SECRET_KEY} &&
       mc mb -p local/videos || true &&
       mc mb -p local/audios || true &&
       mc anonymous set public local/audios || true &&
@@ -64,7 +64,7 @@ services:
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ChangeME123
+      POSTGRES_PASSWORD: ${PG_PASS}
       POSTGRES_DB: videos
     ports:
       - "5432:5432"
@@ -93,17 +93,29 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgresql://postgres:ChangeME123@postgres:5432/videos
+      DATABASE_URL: ${DATABASE_URL}
 
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: minio
-      S3_SECRET_KEY: minio123
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_BUCKET: videos
 
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_QUEUE: video_jobs
     restart: unless-stopped
+
+  migrate:
+    build: ../upload-service
+    container_name: migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    command: alembic upgrade head
 
   # -------------------------
   # Converter Service (Go)
@@ -121,13 +133,19 @@ services:
 
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY: minio
-      S3_SECRET_KEY: minio123
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
 
       INPUT_BUCKET: videos
       OUTPUT_BUCKET: audios
 
-      # IMPORTANT FIX
       UPLOAD_SERVICE_URL: http://upload-service:8000
+
+      MAX_RETRIES: 3
+      FFMPEG_TIMEOUT_SECONDS: 600
+      VIDEO_JOBS_QUEUE: video_jobs
+      VIDEO_JOBS_DLQ: video_jobs_dlq
+      AUDIO_READY_QUEUE: audio_ready
+
     restart: unless-stopped
 
   # -------------------------
@@ -145,7 +163,7 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_QUEUE: audio_ready
 
-      S3_ENDPOINT: http://localhost:9000   # public-facing URL
+      S3_ENDPOINT: http://minio:9000   # public-facing URL
       OUTPUT_BUCKET: audios
     restart: unless-stopped
 

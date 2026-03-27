@@ -2,7 +2,10 @@ package storage
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
+	"strings"
 
 	"converter-service/config"
 	"converter-service/logger"
@@ -10,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go"
 )
 
 type Storage struct {
@@ -42,7 +46,7 @@ func NewStorage(cfg *config.Config) *Storage {
 }
 
 func (s *Storage) DownloadFile(key, localPath string) error {
-	logger.Logger.Println("Downloading:", key)
+	logger.Logger.Printf("Downloading key=%s localPath=%s", key, localPath)
 
 	outFile, err := os.Create(localPath)
 	if err != nil {
@@ -64,7 +68,7 @@ func (s *Storage) DownloadFile(key, localPath string) error {
 }
 
 func (s *Storage) UploadFile(localPath, key string) error {
-	logger.Logger.Println("Uploading:", key)
+	logger.Logger.Printf("Uploading key=%s localPath=%s", key, localPath)
 
 	file, err := os.Open(localPath)
 	if err != nil {
@@ -78,5 +82,45 @@ func (s *Storage) UploadFile(localPath, key string) error {
 		Body:   file,
 	})
 
+	return err
+}
+
+func (s *Storage) OutputFileExists(key string) (bool, error) {
+	_, err := s.Client.HeadObject(context.TODO(), &s3.HeadObjectInput{
+		Bucket: &s.Config.OutputBucket,
+		Key:    &key,
+	})
+	if err == nil {
+		return true, nil
+	}
+
+	if IsNotFoundError(err) {
+		return false, nil
+	}
+
+	return false, err
+}
+
+func IsNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		code := apiErr.ErrorCode()
+		if code == "NoSuchKey" || code == "NotFound" || code == "NoSuchBucket" {
+			return true
+		}
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such key") || strings.Contains(msg, "not found")
+}
+
+func WrapInputDownloadError(err error, key string) error {
+	if IsNotFoundError(err) {
+		return fmt.Errorf("input file not found in object storage: %s", key)
+	}
 	return err
 }
