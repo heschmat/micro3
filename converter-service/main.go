@@ -20,7 +20,8 @@ func publishAudioReady(cfg *config.Config, videoID, audioPath string) error {
 
 func updateVideoStatus(videoID, status, outputPath, errMsg string) {
 	// baseURL := "http://upload-service:8000/videos/" + videoID
-	baseURL := "http://localhost:8000/videos/" + videoID
+	// baseURL := "http://localhost:8000/videos/" + videoID
+	baseURL := os.Getenv("UPLOAD_SERVICE_URL") + "/videos/" + videoID
 
 	params := url.Values{}
 	params.Add("status", status)

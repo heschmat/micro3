@@ -1,26 +1,64 @@
+
 services:
+  # -------------------------
+  # RabbitMQ
+  # -------------------------
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"     # messaging
-      - "15672:15672"   # UI
+      - "5672:5672"
+      - "15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # -------------------------
+  # MinIO (S3)
+  # -------------------------
   minio:
     image: minio/minio
     container_name: minio
+    command: server /data --console-address ":9001"
     ports:
-      - "9000:9000"     # API
-      - "9001:9001"     # Console
+      - "9000:9000"
+      - "9001:9001"
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio123
-    command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------
+  # MinIO bucket initializer
+  # -------------------------
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minio minio123 &&
+      mc mb -p local/videos || true &&
+      mc mb -p local/audios || true &&
+      mc anonymous set public local/audios || true &&
+      exit 0;
+      "
+
+  # -------------------------
+  # Postgres
+  # -------------------------
   postgres:
     image: postgres:17
     container_name: postgres
@@ -32,7 +70,105 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # -------------------------
+  # Upload Service (FastAPI)
+  # -------------------------
+  upload-service:
+    build: ../upload-service
+    container_name: upload-service
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://postgres:ChangeME123@postgres:5432/videos
+
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minio
+      S3_SECRET_KEY: minio123
+      S3_BUCKET: videos
+
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_QUEUE: video_jobs
+    restart: unless-stopped
+
+  # -------------------------
+  # Converter Service (Go)
+  # -------------------------
+  converter-service:
+    build: ../converter-service
+    container_name: converter-service
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      RABBITMQ_HOST: rabbitmq
+
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minio
+      S3_SECRET_KEY: minio123
+
+      INPUT_BUCKET: videos
+      OUTPUT_BUCKET: audios
+
+      # IMPORTANT FIX
+      UPLOAD_SERVICE_URL: http://upload-service:8000
+    restart: unless-stopped
+
+  # -------------------------
+  # Notification Service
+  # -------------------------
+  notification-service:
+    build: ../notification-service
+    container_name: notification-service
+    ports:
+      - "8001:8000"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_QUEUE: audio_ready
+
+      S3_ENDPOINT: http://localhost:9000   # public-facing URL
+      OUTPUT_BUCKET: audios
+    restart: unless-stopped
+
+  # -------------------------
+  # frontend (next.js)
+  # -------------------------
+  frontend:
+    build: ../frontend
+    container_name: frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      upload-service:
+        condition: service_started
+    environment:
+      # NEXT_PUBLIC_API_URL: http://upload-service:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_DOWNLOAD_BASE_URL: http://localhost:9000/audios
+    restart: unless-stopped
+
+# -------------------------
+# Volumes
+# -------------------------
 volumes:
   minio_data:
   postgres_data:
