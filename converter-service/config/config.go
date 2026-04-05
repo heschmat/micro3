@@ -25,6 +25,8 @@ type Config struct {
 
 	MaxRetries           int
 	FFmpegTimeoutSeconds int
+
+	InternalServiceToken string
 }
 
 func LoadConfig() *Config {

@@ -148,3 +148,11 @@ docker exec -it rabbitmq rabbitmqctl delete_queue video_jobs
 docker exec -it rabbitmq rabbitmqctl delete_queue video_jobs_retry
 docker exec -it rabbitmq rabbitmqctl delete_queue video_jobs_dlq
 ```
+
+
+```md
+Upload API → http://localhost:8000
+Notification API → http://localhost:8001
+RabbitMQ UI → http://localhost:15672
+MinIO Console → http://localhost:9001
+```

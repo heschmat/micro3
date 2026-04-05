@@ -143,15 +143,34 @@
 
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function Home() {
+  const router = useRouter();
+  
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [videoId, setVideoId] = useState<string | null>(null);
+
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_URL}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      router.refresh();
+      alert("Logged out.");
+    } catch (err) {
+      console.error(err);
+      alert("Logout failed.");
+    }
+  };
 
   const handleUpload = async () => {
     if (!file) {
@@ -168,9 +187,15 @@ export default function Home() {
       const res = await fetch(`${API_URL}/upload`, {
         method: "POST",
         body: formData,
+        credentials: "include",
       });
 
       if (!res.ok) {
+        if (res.status === 401) {
+          alert("Please log in before uploading a video.");
+          return;
+        }
+
         throw new Error(`Upload failed (${res.status})`);
       }
 
@@ -186,6 +211,37 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gray-100 px-4 py-10">
+      <div className="mx-auto mb-6 flex max-w-5xl justify-end gap-4">
+        <Link
+          href="/login"
+          className="text-sm font-medium text-gray-600 hover:text-black"
+        >
+          Login
+        </Link>
+
+        <Link
+          href="/register"
+          className="text-sm font-medium text-gray-600 hover:text-black"
+        >
+          Register
+        </Link>
+
+        <Link
+          href="/dashboard"
+          className="text-sm font-medium text-gray-600 hover:text-black"
+        >
+          Dashboard
+        </Link>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="text-sm font-medium text-gray-600 hover:text-black"
+        >
+          Logout
+        </button>
+      </div>
+
       <div className="mx-auto max-w-5xl grid gap-6 lg:grid-cols-2">
         <section className="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
           <p className="text-sm text-gray-500">Media Pipeline</p>

@@ -1,10 +1,29 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, String, DateTime, Integer
+from sqlalchemy import Column, String, DateTime, Integer, ForeignKey
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
+
+
 
 from app.db import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    # String UUID primary key for users.
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # Users log in with email.
+    email = Column(String, unique=True, nullable=False, index=True)
+
+    # Store hashed password only.
+    password_hash = Column(String, nullable=False)
+
+    # Convenience relationship to uploaded videos.
+    videos = relationship("Video", back_populates="user")
 
 
 class Video(Base):
@@ -24,6 +43,10 @@ class Video(Base):
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     failed_at = Column(DateTime, nullable=True)
+
+    # Each video belongs to one user.
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    user = relationship("User", back_populates="videos")
 
     def mark_status(
         self,

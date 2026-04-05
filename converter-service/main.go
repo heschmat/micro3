@@ -48,6 +48,9 @@ func updateVideoStatus(cfg *config.Config, videoID, status, outputPath, errMsg s
 		return
 	}
 
+	// Authenticate this worker against the upload-service internal endpoint.
+	req.Header.Set("X-Service-Token", cfg.InternalServiceToken)
+
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -55,6 +58,16 @@ func updateVideoStatus(cfg *config.Config, videoID, status, outputPath, errMsg s
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		logger.Logger.Printf(
+			"Failed to update status video_id=%s status=%s http_status=%d",
+			videoID,
+			status,
+			resp.StatusCode,
+		)
+		return
+	}
 
 	logger.Logger.Printf("Updated video status video_id=%s status=%s", videoID, status)
 }

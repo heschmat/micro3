@@ -52,3 +52,22 @@ class VideoDownloadResponse(BaseModel):
     video_id: str
     download_url: str
     expires_in: int
+
+
+class UserRegisterRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+
+
+class AuthMessageResponse(BaseModel):
+    message: str
