@@ -1,14 +1,45 @@
-from fastapi import FastAPI
 import threading
+from contextlib import asynccontextmanager
 
-from app.consumer import start_consumer
-from app.logger import logger
+from fastapi import FastAPI, HTTPException
 
-app = FastAPI(title="Notification Service")
+from app.consumer import consumer_state, start_consumer
 
-# Run RabbitMQ consumer in separate thread
-threading.Thread(target=start_consumer, daemon=True).start()
+
+consumer_thread: threading.Thread | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global consumer_thread
+
+    consumer_thread = threading.Thread(
+        target=start_consumer,
+        name="rabbitmq-consumer",
+        daemon=True,
+    )
+    consumer_thread.start()
+
+    yield
+
+
+app = FastAPI(title="Notification Service", lifespan=lifespan)
+
 
 @app.get("/")
 def health():
-    return {"status": "ok"}
+    state = consumer_state.snapshot()
+
+    if not state["running"]:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "consumer_not_running", **state},
+        )
+
+    if not state["connected"]:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "degraded", **state},
+        )
+
+    return {"status": "ok", **state}
