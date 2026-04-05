@@ -95,15 +95,8 @@ services:
         condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
+    env_file: ../upload-service/.env
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-
-      S3_ENDPOINT: http://minio:9000
-      S3_ACCESS_KEY: minio
-      S3_SECRET_KEY: ${S3_SECRET_KEY}
-      S3_BUCKET: videos
-
-      RABBITMQ_HOST: rabbitmq
       RABBITMQ_QUEUE: video_jobs
     restart: unless-stopped
 

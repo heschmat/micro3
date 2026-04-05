@@ -8,5 +8,7 @@ def setup_logger():
 
     # Reduce noise from pika
     logging.getLogger("pika").setLevel(logging.WARNING)
+    logging.getLogger("botocore").setLevel(logging.WARNING)
+    logging.getLogger("boto3").setLevel(logging.WARNING)
 
     return logging.getLogger("upload-service")

@@ -1,60 +1,3 @@
-// "use client";
-
-// import { useEffect, useState } from "react";
-// import { useParams } from "next/navigation";
-
-// type Video = {
-//   id: string;
-//   status: string;
-//   output_path?: string;
-//   error?: string;
-// };
-
-// export default function StatusPage() {
-//   const params = useParams();
-//   const id = params.id as string;
-
-//   const [video, setVideo] = useState<Video | null>(null);
-
-//   useEffect(() => {
-//     const interval = setInterval(async () => {
-//       const res = await fetch(`http://localhost:8000/videos/${id}`);
-//       const data = await res.json();
-//       setVideo(data);
-//     }, 2000);
-
-//     return () => clearInterval(interval);
-//   }, [id]);
-
-//   return (
-//     <main className="p-10 max-w-xl mx-auto space-y-4">
-//       <h1 className="text-2xl font-bold">Status</h1>
-
-//       {!video && <p>Loading...</p>}
-
-//       {video && (
-//         <div className="space-y-2">
-//           <p><strong>ID:</strong> {video.id}</p>
-//           <p><strong>Status:</strong> {video.status}</p>
-
-//           {video.error && (
-//             <p className="text-red-500">Error: {video.error}</p>
-//           )}
-
-//           {video.status === "completed" && video.output_path && (
-//             <a
-//               href={`http://localhost:9000/audios/${video.output_path}`}
-//               className="text-green-600 underline"
-//             >
-//               Download Audio
-//             </a>
-//           )}
-//         </div>
-//       )}
-//     </main>
-//   );
-// }
-
 "use client";
 
 import Link from "next/link";
@@ -69,13 +12,20 @@ type Video = {
   input_path?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  failed_at?: string | null;
+  retry_count?: number;
+};
+
+type DownloadResponse = {
+  video_id: string;
+  download_url: string;
+  expires_in: number;
 };
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-const DOWNLOAD_BASE_URL =
-  process.env.NEXT_PUBLIC_DOWNLOAD_BASE_URL || "http://localhost:9000/audios";
 
 function getStatusMeta(status: string) {
   switch (status) {
@@ -95,13 +45,13 @@ function getStatusMeta(status: string) {
         bar: "w-[30%]",
         description: "The job has been queued and is waiting for a worker.",
       };
-    case "downloading":
+    case "processing":
       return {
-        label: "Downloading",
+        label: "Processing",
         progress: 45,
         badge: "bg-indigo-100 text-indigo-700 border-indigo-200",
         bar: "w-[45%]",
-        description: "The worker is downloading the source video from storage.",
+        description: "A worker has started processing the source video.",
       };
     case "converting":
       return {
@@ -161,6 +111,12 @@ export default function StatusPage() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  // Presigned download link state.
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [downloadExpiresIn, setDownloadExpiresIn] = useState<number | null>(null);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -183,6 +139,13 @@ export default function StatusPage() {
         setFetchError(null);
         setLoading(false);
 
+        // If the output path changes, any old presigned URL should be discarded.
+        // This keeps the UI aligned with the current completed artifact.
+        if (!data.output_path) {
+          setDownloadUrl(null);
+          setDownloadExpiresIn(null);
+        }
+
         if (data.status === "completed" || data.status === "failed") {
           if (intervalId) clearInterval(intervalId);
         }
@@ -204,13 +167,36 @@ export default function StatusPage() {
     };
   }, [id]);
 
+  const fetchDownloadUrl = async () => {
+    try {
+      setDownloadLoading(true);
+      setDownloadError(null);
+
+      const res = await fetch(`${API_URL}/videos/${id}/download`, {
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to get download link (${res.status})`);
+      }
+
+      const data: DownloadResponse = await res.json();
+
+      setDownloadUrl(data.download_url);
+      setDownloadExpiresIn(data.expires_in);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Unknown error";
+      setDownloadError(message);
+    } finally {
+      setDownloadLoading(false);
+    }
+  };
+
   const statusMeta = useMemo(
     () => getStatusMeta(video?.status || "unknown"),
     [video?.status]
   );
-
-  const downloadUrl =
-    video?.output_path ? `${DOWNLOAD_BASE_URL}/${video.output_path}` : null;
 
   return (
     <main className="min-h-screen bg-gray-100 px-4 py-10">
@@ -230,7 +216,7 @@ export default function StatusPage() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
-          <section className="lg:col-span-2 rounded-2xl bg-white p-6 shadow-sm border border-gray-200">
+          <section className="lg:col-span-2 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm text-gray-500">Job ID</p>
@@ -252,7 +238,7 @@ export default function StatusPage() {
                 <span>{statusMeta.progress}%</span>
               </div>
 
-              <div className="h-3 w-full rounded-full bg-gray-200 overflow-hidden">
+              <div className="h-3 w-full overflow-hidden rounded-full bg-gray-200">
                 <div
                   className={`h-full rounded-full bg-blue-500 transition-all duration-500 ${statusMeta.bar}`}
                 />
@@ -304,7 +290,7 @@ export default function StatusPage() {
               </div>
             )}
 
-            {video?.status === "completed" && downloadUrl && (
+            {video?.status === "completed" && (
               <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                 <p className="text-sm font-semibold text-emerald-700">
                   Audio is ready
@@ -312,20 +298,55 @@ export default function StatusPage() {
                 <p className="mt-2 text-sm text-emerald-600">
                   Your converted MP3 has been generated successfully.
                 </p>
-                <a
-                  href={downloadUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-4 inline-flex rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
-                >
-                  Download MP3
-                </a>
+
+                {!downloadUrl ? (
+                  <button
+                    onClick={fetchDownloadUrl}
+                    disabled={downloadLoading}
+                    className="mt-4 inline-flex rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {downloadLoading ? "Preparing download..." : "Get Download Link"}
+                  </button>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    <a
+                      href={downloadUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                    >
+                      Download MP3
+                    </a>
+
+                    <div className="text-xs text-emerald-700">
+                      This secure link expires in{" "}
+                      <span className="font-semibold">
+                        {downloadExpiresIn ?? "—"}
+                      </span>{" "}
+                      seconds.
+                    </div>
+
+                    <button
+                      onClick={fetchDownloadUrl}
+                      disabled={downloadLoading}
+                      className="inline-flex rounded-lg border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {downloadLoading ? "Refreshing..." : "Refresh Link"}
+                    </button>
+                  </div>
+                )}
+
+                {downloadError && (
+                  <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    Failed to get download link: {downloadError}
+                  </div>
+                )}
               </div>
             )}
           </section>
 
           <aside className="space-y-6">
-            <section className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200">
+            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-gray-900">Job Details</h2>
 
               <div className="mt-4 space-y-4 text-sm">
@@ -349,63 +370,84 @@ export default function StatusPage() {
                     {formatDate(video?.updated_at)}
                   </p>
                 </div>
+
+                <div>
+                  <p className="text-gray-500">Started At</p>
+                  <p className="mt-1 text-gray-800">
+                    {formatDate(video?.started_at)}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-gray-500">Completed At</p>
+                  <p className="mt-1 text-gray-800">
+                    {formatDate(video?.completed_at)}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-gray-500">Retry Count</p>
+                  <p className="mt-1 text-gray-800">
+                    {video?.retry_count ?? 0}
+                  </p>
+                </div>
               </div>
             </section>
 
-            <section className="rounded-2xl bg-white p-6 shadow-sm border border-gray-200">
-                <h2 className="text-lg font-semibold text-gray-900">Pipeline Stages</h2>
+            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <h2 className="text-lg font-semibold text-gray-900">Pipeline Stages</h2>
 
-                <div className="mt-4 space-y-3">
-                    <Stage
-                        title="Uploaded"
-                        active={
-                            video?.status === "uploaded" ||
-                            video?.status === "queued" ||
-                            video?.status === "downloading" ||
-                            video?.status === "converting" ||
-                            video?.status === "uploading" ||
-                            video?.status === "completed"
-                        }
-                        />
-                    <Stage
-                        title="Queued"
-                        active={
-                            video?.status === "queued" ||
-                            video?.status === "downloading" ||
-                            video?.status === "converting" ||
-                            video?.status === "uploading" ||
-                            video?.status === "completed"
-                        }
-                        />
-                    <Stage
-                        title="Downloading"
-                        active={
-                            video?.status === "downloading" ||
-                            video?.status === "converting" ||
-                            video?.status === "uploading" ||
-                            video?.status === "completed"
-                        }
-                    />
-                    <Stage
-                        title="Converting"
-                        active={
-                            video?.status === "converting" ||
-                            video?.status === "uploading" ||
-                            video?.status === "completed"
-                        }
-                    />
-                    <Stage
-                        title="Uploading Output"
-                        active={
-                            video?.status === "uploading" ||
-                            video?.status === "completed"
-                        }
-                    />
-                    <Stage
-                        title="Completed"
-                        active={video?.status === "completed"}
-                    />
-                </div>
+              <div className="mt-4 space-y-3">
+                <Stage
+                  title="Uploaded"
+                  active={
+                    video?.status === "uploaded" ||
+                    video?.status === "queued" ||
+                    video?.status === "processing" ||
+                    video?.status === "converting" ||
+                    video?.status === "uploading" ||
+                    video?.status === "completed"
+                  }
+                />
+                <Stage
+                  title="Queued"
+                  active={
+                    video?.status === "queued" ||
+                    video?.status === "processing" ||
+                    video?.status === "converting" ||
+                    video?.status === "uploading" ||
+                    video?.status === "completed"
+                  }
+                />
+                <Stage
+                  title="Processing"
+                  active={
+                    video?.status === "processing" ||
+                    video?.status === "converting" ||
+                    video?.status === "uploading" ||
+                    video?.status === "completed"
+                  }
+                />
+                <Stage
+                  title="Converting"
+                  active={
+                    video?.status === "converting" ||
+                    video?.status === "uploading" ||
+                    video?.status === "completed"
+                  }
+                />
+                <Stage
+                  title="Uploading Output"
+                  active={
+                    video?.status === "uploading" ||
+                    video?.status === "completed"
+                  }
+                />
+                <Stage
+                  title="Completed"
+                  active={video?.status === "completed"}
+                />
+              </div>
             </section>
           </aside>
         </div>

@@ -1,5 +1,6 @@
-import pika
 import json
+import pika
+
 from app.config import settings
 from app.logger import setup_logger
 
@@ -22,8 +23,13 @@ def publish_message(message: dict):
             durable=True,
             arguments={
                 "x-dead-letter-exchange": "",
-                "x-dead-letter-routing-key": "video_jobs_dlq",
+                "x-dead-letter-routing-key": settings.RABBITMQ_DLQ,
             },
+        )
+
+        channel.queue_declare(
+            queue=settings.RABBITMQ_DLQ,
+            durable=True,
         )
 
         logger.info(f"Publishing message: {message}")
@@ -34,8 +40,10 @@ def publish_message(message: dict):
             body=json.dumps(message),
             properties=pika.BasicProperties(
                 delivery_mode=2,  # make message persistent
+                content_type="application/json",
             ),
         )
+        
 
         connection.close()
 
